@@ -37,7 +37,7 @@ entity_unit_map = {
 }
 
 # Set the number of samples to use
-NUM_SAMPLES = 1000  # Change this value as needed
+NUM_SAMPLES = 10000  # Change this value as needed
 
 # Paths to data and images
 TRAIN_CSV_PATH = 'dataset/cleaned_train2.csv'
@@ -112,37 +112,23 @@ def standardize_unit(unit):
     return unit_mapping.get(unit.lower(), unit.lower())
 
 def preprocess_image(image):
-    # Convert to numpy array for OpenCV processing
-    image_np = np.array(image)
-
-    # Resize image if too large to speed up processing
-    max_size = 2048
-    if max(image_np.shape[:2]) > max_size:
-        scale_factor = max_size / float(max(image_np.shape[:2]))
-        new_size = (int(image_np.shape[1] * scale_factor), int(image_np.shape[0] * scale_factor))
-        image_np = cv2.resize(image_np, new_size, interpolation=cv2.INTER_AREA)
-
-    # Convert to grayscale
-    if len(image_np.shape) == 3:
-        image_np = cv2.cvtColor(image_np, cv2.COLOR_BGR2GRAY)
-
-    # Adaptive histogram equalization
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    image_np = clahe.apply(image_np)
-
-    # Apply Gaussian blur to reduce noise
-    # image_np = cv2.GaussianBlur(image_np, (3, 3), 0)
-
-    # Adaptive thresholding
-    image_np = cv2.adaptiveThreshold(image_np, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
-
-    # Convert back to PIL Image
-    image = Image.fromarray(image_np)
-
-    # Enhance contrast
+    # Increase contrast
     enhancer = ImageEnhance.Contrast(image)
     image = enhancer.enhance(2)
 
+    # Convert to grayscale
+    image = image.convert('L')
+    # Increase contrast
+    enhancer = ImageEnhance.Contrast(image)
+    image = enhancer.enhance(2)
+
+    # Resize the image to make it larger
+    # new_width = int(image.width * 1.5)
+    # new_height = int(image.height * 1.5)
+    # image = image.resize((new_width, new_height), Image.LANCZOS)
+
+    # Apply median filter to reduce noise
+    image = image.filter(ImageFilter.MedianFilter())
     return image
 
 # Function to extract entity value from OCR text
@@ -191,12 +177,11 @@ def process_row(row, images_dir):
         return ""
 
     # Use OCR to extract text with custom configurations
-    ocr_config = r'--oem 1 --psm 11'  # Try different PSM and OEM modes to find the best
+    ocr_config = r'--oem 3 --psm 12'
     ocr_text = pytesseract.image_to_string(image, config=ocr_config)
 
     # Normalize OCR text
-    ocr_text = ocr_text.replace('|', '1').replace('l', '1').replace('O', '0').replace('S', '5')  # Add more replacements as needed
-    ocr_text = re.sub(r'[^a-zA-Z0-9., ]', '', ocr_text)  # Remove unwanted characters
+    ocr_text = ocr_text.replace('|', '1').replace('l', '1').replace('O', '0').replace('S', '5')
 
     # Extract entity value from OCR text
     predicted_value = extract_entity_value(ocr_text, entity_name)
@@ -208,8 +193,7 @@ def process_samples(df, images_dir):
     num_processes = max(1, multiprocessing.cpu_count() - 2)  # Leave some cores free
     with multiprocessing.Pool(processes=num_processes) as pool:
         func = partial(process_row, images_dir=images_dir)
-        # Use chunksize to reduce overhead
-        predictions = list(tqdm(pool.imap(func, [row for _, row in df.iterrows()], chunksize=10), total=df.shape[0]))
+        predictions = list(tqdm(pool.imap(func, [row for _, row in df.iterrows()]), total=df.shape[0]))
     return predictions
 
 # Function to compute evaluation metrics
