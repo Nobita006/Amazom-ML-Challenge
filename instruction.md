@@ -12,6 +12,8 @@ source venv/bin/activate
 
 deactivate
 
+download tesseract-OCR (just google it (not pip install))
+
 
 utils - downloads
 validate - check if image are good
